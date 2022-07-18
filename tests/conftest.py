@@ -4,7 +4,7 @@ import pytest
 
 from pathlib import Path
 
-from volttron_actuator.agent import actuator_agent
+from volttron_actuator.agent import initialize_agent
 
 TESTS_DIR = Path(__file__).parent
 TMP_DIR = TESTS_DIR / "tmp"
@@ -24,6 +24,6 @@ def actuator():
     with open(config_path, 'w') as fp:
         json.dump(config_json, fp)
 
-    yield actuator_agent(config_path)
+    yield initialize_agent(config_path)
 
     Path(config_path).unlink(missing_ok=True)
