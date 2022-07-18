@@ -489,7 +489,7 @@ class LockError(Exception):
     pass
 
 
-def actuator_agent(config_path, **kwargs):
+def initialize_agent(config_path, **kwargs):
     """Parses the Actuator Agent configuration and returns an instance of
     the agent created using that configuation.
 
@@ -1442,7 +1442,7 @@ class ActuatorAgent(Agent):
 
 def main():
     """Main method called to start the agent."""
-    vip_main(actuator_agent, identity='platform.actuator', version=__version__)
+    vip_main(initialize_agent, identity='platform.actuator', version=__version__)
 
 
 if __name__ == '__main__':
