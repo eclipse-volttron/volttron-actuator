@@ -1,6 +1,6 @@
 # volttron-actuator
 
-[![ci](https://github.com/VOLTTRON/volttron-actuator/workflows/ci/badge.svg)](https://github.com/VOLTTRON/volttron-actuator/actions?query=workflow%3Aci)
+![Passing?](https://github.com/VOLTTRON/volttron-actuator/actions/workflows/run_tests.yml/badge.svg)
 [![documentation](https://img.shields.io/badge/docs-mkdocs%20material-blue.svg?style=flat)](https://VOLTTRON.github.io/volttron-actuator/)
 [![pypi version](https://img.shields.io/pypi/v/volttron-actuator.svg)](https://pypi.org/project/volttron-actuator/)
 
