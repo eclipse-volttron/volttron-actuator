@@ -1,8 +1,8 @@
 """Tests suite for `volttron_actuator`."""
 import json
-import pytest
-
 from pathlib import Path
+
+import pytest
 
 from volttron_actuator.agent import initialize_agent
 

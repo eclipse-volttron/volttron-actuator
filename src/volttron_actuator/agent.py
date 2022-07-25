@@ -449,13 +449,18 @@ import logging
 import sys
 
 import gevent
-from tzlocal import get_localzone    # type: ignore
+from tzlocal import get_localzone
 from volttron.client.known_identities import PLATFORM_DRIVER
 from volttron.client.messaging import topics
 from volttron.client.messaging.utils import normtopic
 from volttron.client.vip.agent import RPC, Agent, Unreachable
-from volttron.utils import (format_timestamp, get_aware_utc_now, load_config, setup_logging,
-                            vip_main)
+from volttron.utils import (
+    format_timestamp,
+    get_aware_utc_now,
+    load_config,
+    setup_logging,
+    vip_main,
+)
 from volttron.utils.jsonrpc import RemoteError
 
 from volttron_actuator import unpack_legacy_message
