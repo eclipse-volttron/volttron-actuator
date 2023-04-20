@@ -4,421 +4,683 @@
 Actuator Agent
 ==============
 
-This agent is used to manage write access to devices. Agents may request scheduled times, called Tasks, to interact with
-one or more devices.
+The Actuator Agent is used to manage write access to devices. Other agents
+may request scheduled times, called Tasks, to interact with one or more
+devices.
 
+Agents may interact with the ActuatorAgent via either Pub/Sub or RPC,
+but RPC is recommended.
 
-.. _Actuator-Communication:
+The Actuator Agent also triggers the heart beat on devices whose
+drivers are configured to do so.
 
-Actuator Agent Communication
-============================
-
-
-Scheduling a Task
------------------
-
-An agent can request a task schedule by publishing to the `devices/actuators/schedule/request` topic with the following
-header:
-
-.. code-block:: python
-
-    {
-        'type': 'NEW_SCHEDULE',
-        'requesterID': <Ignored, VIP Identity used internally>
-        'taskID': <unique task ID>, #The desired task ID for this task. It must be unique among all other scheduled tasks.
-        'priority': <task priority>, #The desired task priority, must be 'HIGH', 'LOW', or 'LOW_PREEMPT'
-    }
-
-with the following message:
-
-.. code-block:: python
-
-    [
-        ["campus/building/device1", #First time slot.
-         "2013-12-06 16:00:00",     #Start of time slot.
-         "2013-12-06 16:20:00"],    #End of time slot.
-        ["campus/building/device1", #Second time slot.
-         "2013-12-06 18:00:00",     #Start of time slot.
-         "2013-12-06 18:20:00"],    #End of time slot.
-        ["campus/building/device2", #Third time slot.
-         "2013-12-06 16:00:00",     #Start of time slot.
-         "2013-12-06 16:20:00"],    #End of time slot.
-        #etc...
-    ]
-
-.. warning::
-
-   If time zones are not included in schedule requests then the Actuator will interpret them as being in local time.
-   This may cause remote interaction with the actuator to malfunction.
-
-
-Points on Task Scheduling
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
--  Everything in the header is required
--  Task id and requester id (agentid) should be a non empty value of type string
--  A Task schedule must have at least one time slot.
--  The start and end times are parsed with `dateutil's date/time
-   parser <http://labix.org/python-dateutil#head-c0e81a473b647dfa787dc11e8c69557ec2c3ecd2>`__.
-   **The default string representation of a python datetime object will parse without issue.**
--  Two Tasks are considered conflicted if at least one time slot on a device from one task overlaps the time slot of the
-   other on the same device.
--  The end time of one time slot can be the same as the start time of another time slot for the same device. This will
-   not be considered a conflict. For example, ``time_slot1(device0, time1, **time2**)`` and
-   ``time_slot2(device0, **time2**, time3)`` are not considered a conflict
--  A request must not conflict with itself
--  If something goes wrong see :ref:`this failure string list <Actuator-Failure-Reasons>` for an
-   explanation of the error.
-
-
-Task Priorities
-^^^^^^^^^^^^^^^
-
-* `HIGH`:  This Task cannot be preempted under any circumstance.  This task may preempt other conflicting preemptable
-  Tasks.
-
-* `LOW`:  This Task cannot be preempted **once it has started**.  A Task is considered started once the earliest time slot
-  on any device has been reached.  This Task may **not** preempt other Tasks.
-
-* `LOW_PREEMPT`:  This Task may be preempted at any time.  If the Task is preempted once it has begun running any
-  current time slots will be given a grace period (configurable in the ActuatorAgent configuration file, defaults to 60
-  seconds) before being revoked.  This Task may **not** preempt other Tasks.
-
-
-Canceling a Task
-----------------
-
-A task may be canceled by publishing to the `devices/actuators/schedule/request` topic with the following header:
-
-.. code-block:: python
-
-    {
-        'type': 'CANCEL_SCHEDULE',
-        'requesterID': <Ignored, VIP Identity used internally>
-        'taskID': <unique task ID>, #The desired task ID for this task. It must be unique among all other scheduled tasks.
-    }
-
-
-Points on Task Canceling
-^^^^^^^^^^^^^^^^^^^^^^^^
-
--  The requesterID and taskID must match the original values from the original request header.
--  After a Tasks time has passed there is no need to cancel it. Doing so will result in a `TASK_ID_DOES_NOT_EXIST`
-   error.
--  If something goes wrong see :ref:`this failure string list <Actuator-Failure-Reasons>` for an explanation
-   of the error.
-
-
-Actuator Agent Schedule Response
---------------------------------
-
-In response to a Task schedule request the ActuatorAgent will respond on the topic `devices/actuators/schedule/result`
-with the header:
-
-.. code-block:: python
-
-    {
-        'type': <'NEW_SCHEDULE', 'CANCEL_SCHEDULE'>
-        'requesterID': <Agent VIP identity from the request>,
-        'taskID': <Task ID from the request>
-    }
-
-And the message (after parsing the json):
-
-.. code-block:: python
-
-    {
-        'result': <'SUCCESS', 'FAILURE', 'PREEMPTED'>,
-        'info': <Failure reason, if any>,
-        'data': <Data about the failure or cancellation, if any>
-    }
-
-The Actuator Agent may publish cancellation notices for preempted Tasks using the `PREEMPTED` result.
-
-
-Preemption Data
-^^^^^^^^^^^^^^^
-
-Preemption data takes the form:
-
-.. code-block:: python
-
-    {
-        'agentID': <Agent ID of preempting task>,
-        'taskID': <Task ID of preempting task>
-    }
-
-
-.. _Actuator-Failure-Reasons:
-
-Failure Reasons
-^^^^^^^^^^^^^^^
-
-In many cases the Actuator Agent will try to give good feedback as to why a request failed.
-
-
-General Failures
-""""""""""""""""
-
-* `INVALID_REQUEST_TYPE`:  Request type was not `NEW_SCHEDULE` or `CANCEL_SCHEDULE`.
-* `MISSING_TASK_ID`:  Failed to supply a taskID.
-* `MISSING_AGENT_ID`:  AgentID not supplied.
-
-
-Task Schedule Failures
-""""""""""""""""""""""
-
-* `TASK_ID_ALREADY_EXISTS`:  The supplied taskID already belongs to an existing task.
-* `MISSING_PRIORITY`:  Failed to supply a priority for a Task schedule request.
-* `INVALID_PRIORITY`:  Priority not one of `HIGH`, `LOW`, or `LOW_PREEMPT`.
-* `MALFORMED_REQUEST_EMPTY`:  Request list is missing or empty.
-* `REQUEST_CONFLICTS_WITH_SELF`:  Requested time slots on the same device overlap.
-* `MALFORMED_REQUEST`:  Reported when the request parser raises an unhandled exception. The exception name and info are
-  appended to this info string.
-* `CONFLICTS_WITH_EXISTING_SCHEDULES`:  This schedule conflict with an existing schedules that it cannot preempt. The
-  data item for the results will contain info about the conflicts in this form (after parsing json)
-
-.. code-block:: python
-
-    {
-        '<agentID1>':
-        {
-            '<taskID1>':
-            [
-                ["campus/building/device1",
-                 "2013-12-06 16:00:00",
-                 "2013-12-06 16:20:00"],
-                ["campus/building/device1",
-                 "2013-12-06 18:00:00",
-                 "2013-12-06 18:20:00"]
-            ]
-            '<taskID2>':[...]
-        }
-        '<agentID2>': {...}
-    }
-
-
-Task Cancel Failures
-""""""""""""""""""""
-
-* `TASK_ID_DOES_NOT_EXIST`:  Trying to cancel a Task which does not exist.  This error can also occur when trying to
-  cancel a finished Task.
-* `AGENT_ID_TASK_ID_MISMATCH`:  A different agent ID is being used when trying to cancel a Task.
-
-
-.. _Actuator-Value-Request:
-
-Actuator Agent Value Request
-----------------------------
-
-Once an Task has been scheduled and the time slot for one or more of the devices has started an agent may interact with
-the device using the **get** and **set** topics.
-
-Both **get** and **set** are responded to the same way. See :ref:`Actuator Reply <Actuator-Reply>` below.
-
-Getting values
-^^^^^^^^^^^^^^
-
-While a driver for a device should always be setup to periodically broadcast the state of a device you may want an
-up-to-the-moment value for an actuation point on a device.
-
-To request a value publish a message to the following topic:
-
-.. code-block:: python
-
-    'devices/actuators/get/<full device path>/<actuation point>'
-
-
-Setting Values
-^^^^^^^^^^^^^^
-
-Value are set in a similar manner:
-
-To set a value publish a message to the following topic:
-
-.. code-block:: python
-
-    'devices/actuators/set/<full device path>/<actuation point>'
-
-With this header:
-
-.. code-block:: python
-
-    #python
-    {
-        'requesterID': <Ignored, VIP Identity used internally>
-    }
-
-And the message contents being the new value of the actuator.
-
-.. warning::
-
-    The actuator agent expects all messages to be JSON and will parse them accordingly. Use `publish_json` to send
-    messages where possible.  This is significant for Boolean values especially
-
-.. _Actuator-Reply:
-
-Actuator Reply
-^^^^^^^^^^^^^^
-
-The ActuatorAgent will reply to both `get` and `set` on the `value` topic for an actuator:
-
-.. code-block:: python
-
-    'devices/actuators/value/<full device path>/<actuation point>'
-
-With this header:
-
-.. code-block:: python
-
-    {
-        'requesterID': <Agent VIP identity>
-    }
-
-With the message containing the value encoded in JSON.
-
-Actuator Error Reply
-^^^^^^^^^^^^^^^^^^^^
-
-If something goes wrong the Actuator Agent will reply to both `get` and `set` on the `error` topic for an actuator:
-
-.. code-block:: python
-
-    'devices/actuators/error/<full device path>/<actuation point>'
-
-With this header:
-
-.. code-block:: python
-
-    {
-        'requesterID': <Agent VIP identity>
-    }
-
-The message will be in the following form:
-
-.. code-block:: python
-
-    {
-        'type': <Error Type or name of the exception raised by the request>
-        'value': <Specific info about the error>
-    }
-
-Common Error Types
-^^^^^^^^^^^^^^^^^^
-
-* `LockError`:  Returned when a request is made when we do not have permission to use a device.  (Forgot to schedule,
-  preempted and we did not handle the preemption message correctly, ran out of time in time slot, etc...)
-* `ValueError`:  Message missing or could not be parsed as JSON
-
-
-.. _Actuator-Schedule-State:
-
-Schedule State Broadcast
-------------------------
-
-Periodically the ActuatorAgent will publish the state of all currently scheduled devices.  For each device the
-ActuatorAgent will publish to an associated topic:
-
-.. code-block:: python
-
-    'devices/actuators/schedule/announce/<full device path>'
-
-With the following header:
-
-.. code-block:: python
-
-    {
-        'requesterID': <VIP identity of agent with access>,
-        'taskID': <Task associated with the time slot>
-        'window': <Seconds remaining in the time slot>
-    }
-
-The frequency of the updates is configurable with the `schedule_publish_interval` setting.
-
-
-Task Preemption
----------------
-
-Both `LOW` and `LOW_PREEMPT` priority Tasks can be preempted.  `LOW` priority Tasks may be preempted by a conflicting
-`HIGH` priority Task before it starts.  `LOW_PREEMPT` priority Tasks can be preempted by `HIGH` priority Tasks even
-after they start.
-
-When a Task is preempted the ActuatorAgent will publish to `devices/actuators/schedule/response` with the following
-header:
-
-.. code-block:: python
-
-    {
-        'type': 'CANCEL_SCHEDULE',
-        'requesterID': <Agent VIP identity for the preempted Task>,
-        'taskID': <Task ID for the preempted Task>
-    }
-
-And the message (after parsing the json):
-
-.. code-block:: python
-
-    {
-        'result': 'PREEMPTED',
-        'info': '',
-        'data':
-        {
-            'agentID': <Agent VIP identity of preempting task>,
-            'taskID': <Task ID of preempting task>
-        }
-    }
-
-
-Preemption Grace Time
-^^^^^^^^^^^^^^^^^^^^^
-
-If a `LOW_PREEMPT` priority Task is preempted while it is running the Task will be given a grace period to clean up
-before ending.  For every device which has a current time slot the window of remaining time will be reduced to the grace
-time.  At the end of the grace time the Task will finish.  If the Task has no currently open time slots on any devices
-it will end immediately.
-
+------------
 
 .. _Actuator-Config:
 
 ActuatorAgent Configuration
----------------------------
+===========================
 
-* `schedule_publish_interval`:  Interval between current schedules being published to the message bus for all devices
-* `preempt_grace_time`:  Minimum time given to Tasks which have been preempted to clean up in seconds.  Defaults to 60
-* `schedule_state_file`:  File used to save and restore Task states if the ActuatorAgent restarts for any reason.  File
-  will be created if it does not exist when it is needed
+The Actuator Agent configuration file accepts the following keys:
+
+:schedule_publish_interval: Interval between schedule state announcements in seconds.
+ See `Schedule State Publishes`_. (default: 60)
+:preempt_grace_time: Time allowed, in seconds, for a running, preempted Task to clean up,
+ before losing access to the device. This applies only to tasks with a priority of
+ LOW_PREEMPT. If the Task has no currently open time-slots, it will end immediately.
+ (default: 60)
+:heartbeat_interval: How often to send a heartbeat signal to all devices in seconds.
+ See `Heartbeat Signal`_.  (default: 60)
+:driver_vip_identity: The identity of the driver agent for which this actuator agent provides
+ scheduling services. (default: "platform.driver")
+:allow_no_lock_write: Allow writes to unscheduled devices if there is not a current Task
+ managing access to the device. (default: True)
 
 Sample configuration file
-^^^^^^^^^^^^^^^^^^^^^^^^^
+-------------------------
 
 .. code-block:: json
 
     {
-     "schedule_publish_interval": 30,
-     "schedule_state_file": "actuator_state.pickle"
+        "schedule_publish_interval": 60,
+        "preempt_grace_time": 60,
+        "heartbeat_interval": 60,
+        "driver_vip_identity": "platform.driver",
+        "allow_no_lock_write": true
     }
 
 
 Heartbeat Signal
 ----------------
 
-The ActuatorAgent can be configured to send a heartbeat message to the device to indicate the platform is running.
-Ideally, if the heartbeat signal is not sent the device should take over and resume normal operation.
+The ActuatorAgent can be configured to send a heartbeat message to devices. This indicates to the device that the
+platform is running. The ActuatorAgent will set the heartbeat point to alternating "1" and "0" values.
+Ideally, if the device recognizes that the heartbeat signal has stopped, it should override actions
+taken from VOLTTRON and resume its normal operation. Changes to the heartbeat point will be published like any other
+value change on a device.
 
-The configuration has two parts, the interval (in seconds) for sending the heartbeat and the specific point that should
-be modified each iteration.
+The configuration has two parts:
 
-The heart beat interval is specified with a global `heartbeat_interval` setting.  The ActuatorAgent will automatically
-set the heartbeat point to alternating "1" and "0" values.  Changes to the heartbeat point will be published like any
-other value change on a device.
+* The interval (in seconds) for sending the heartbeat. This is specified with the global `heartbeat_interval` setting.
+* The specific point that should be modified each iteration. This is device specific and specified in the driver
+  configuration files of individual devices.
 
-The heartbeat points are specified in the driver configuration file of individual devices.
+----------
+
+.. _Actuator-Communication:
+
+Reserving Device Access through Scheduled Tasks
+===============================================
+
+Scheduling a Task
+-----------------
+
+.. admonition:: Workflow
+
+    Agents interact with the Actuator Agent following these basic steps:
+
+    #. Schedule a "Task". A Task defines one or more blocks of time during which one or more devices are reserved.
+    #. Wait, if needed, until a block of time starts.
+    #. Set one or more values on the reserved devices.
+    #. Cancel the Task when finished.
+
+Tasks can be scheduled via one of two interfaces:
+
+* The ``request_new_schedule`` RPC method.
+* Publishing to the ``devices/actuators/schedule/request`` Pub/Sub topic.
+
+Both methods require four parameters:
+
+:requester_id: The VIP Identity of the requestor. (Required for legacy reasons, but the value is ignored.)
+:task_id: A name for the Task.
+:priority: :ref:`Priority of the task <Task-Priority>`. Must be either "HIGH", "LOW", or "LOW_PREEMPT"
+:requests: The  `Device Schedule`_ --- A list of devices and time ranges for each device.
+
+Device Schedule
+^^^^^^^^^^^^^^^
+
+The device schedule is a list of blocks of time reserved for each device.
+
+Both the RPC and Pub/Sub interfaces accept schedules in the following
+format. This is the ``requests`` parameter for RPC, and the entire message body
+for Pub/Sub:
+
+.. code-block:: python
+
+    [
+        ["campus/building/device1",       #First time slot.
+         "2013-12-06 16:00:00-00:00",     #Start of time slot.
+         "2013-12-06 16:20:00-00:00"],    #End of time slot.
+        ["campus/building/device1",       #Second time slot.
+         "2013-12-06 18:00:00-00:00",     #Start of time slot.
+         "2013-12-06 18:20:00-00:00"],    #End of time slot.
+        ["campus/building/device2",       #Third time slot.
+         "2013-12-06 16:00:00-00:00",     #Start of time slot.
+         "2013-12-06 16:20:00-00:00"],    #End of time slot.
+        #etc...
+    ]
+
+.. warning::
+
+   If time zones are not included in schedule requests then the Actuator will naively interpret them as being in local time.
+   This may cause remote interaction with the actuator to malfunction.
+
+For Pub/Sub requests, the remaining parameters are included in the header, along with
+an indication that this is a request for a new schedule:
+
+.. code-block:: python
+
+    {
+        "type": "NEW_SCHEDULE",
+        "requesterID": <VIP Identity of the requester>
+        "taskID": <unique task ID>, #The desired task ID for this task. It must be unique among all other scheduled tasks.
+        "priority": <task priority>, #The desired task priority, must be "HIGH", "LOW", or "LOW_PREEMPT"
+    }
+
+
+
+.. _Task-Priority:
+
+Task Priority
+^^^^^^^^^^^^^
+
+There are three valid priority levels:
+
+:HIGH:
+    This Task cannot be preempted under any circumstance.
+    This Task may preempt other conflicting, preemptable Tasks.
+:LOW:
+    This Task cannot be preempted **once it has started**.
+    A Task is considered started once the earliest time slot on any
+    device has been reached. This Task **may not** preempt other Tasks.
+:LOW_PREEMPT:
+    This Task may be preempted **at any time**.
+    If the Task is preempted after it has begun, any current
+    time slots will be given a grace period of :ref:`preempt_grace_time <Actuator-Config>`
+    seconds to clean up before being revoked. This Task **may not** preempt other Tasks.
+
+Whenever a Task is preempted the Actuator Agent will publish a message to
+``devices/actuators/schedule/result`` indicating that the Task has
+been cancelled due to being preempted. See `Preemption Publishes`_
+
+Even when using the RPC interface, agents scheduling low priority tasks
+should subscribe to ``devices/actuators/schedule/result`` to learn when
+Tasks have been canceled due to preemption.
+
+.. admonition:: Points on Task Scheduling
+
+    -  All parameters are required, including those in Pub/Sub headers.
+    -  The task and requester IDs should be a non empty strings
+    -  The keys in RPC requests are spelled in snake_case, while those in Pub/Sub
+       requests are camelCase.
+    -  A Task schedule must always have at least one time slot.
+    -  The start and end times are parsed with `dateutil's date/time
+       parser <http://labix.org/python-dateutil#head-c0e81a473b647dfa787dc11e8c69557ec2c3ecd2>`__.
+       The default string representation of a python datetime object will
+       parse without issue.
+    -  Two Tasks are considered *conflicted* if they contain overlapping
+       time slots for the same device.
+    -  A request must not *conflict* with itself.
+    -  It is not a *conflict* for the end time of one time slot to be the
+       same as the start time of another. For example, ``time_slot1(device0, time1, **time2**)`` and
+       ``time_slot2(device0, **time2**, time3)`` are not *conflicted*.
+
+New Task Response
+^^^^^^^^^^^^^^^^^
+
+Both the RPC and Pub/Sub interface respond to scheduling requests with the following message
+(see :ref:`Failure Reasons <Actuator-Failure-Reasons>` for an explanation of
+possible errors):
+
+.. code-block:: python
+
+    {
+        "result": <"SUCCESS", "FAILURE">,
+        "info": <Failure reason string, where appropriate>,
+        "data": <Data about the failure / cancellation, where appropriate>
+    }
+
+The Pub/Sub interface will respond to requests on the
+``devices/actuators/schedule/result`` topic.
+
+Pub/Sub interface responses will have the following header:
+
+.. code-block:: python
+
+    {
+        "type": "NEW_SCHEDULE"
+        "requesterID": <VIP Identity of requesting agent>,
+        "taskID": <Task ID of the request>
+    }
+
+
+Canceling a Task
+----------------
+
+Tasks can be canceled via one of two interfaces:
+
+* The ``request_cancel_schedule`` RPC method.
+* Publishing to the ``devices/actuators/schedule/request`` Pub/Sub topic.
+
+Both methods require two parameters:
+
+:requester_id: The VIP identity of the agent.
+:task_id: The name of the Task.
+
+When using Pub/Sub, only the headers are required. These should be formatted as:
+
+.. code-block:: python
+
+    {
+        'type': 'CANCEL_SCHEDULE',
+        'requesterID': <Ignored, VIP Identity used internally>
+        'taskID': <unique task ID>, #The desired task ID for this task. It must be unique among all other scheduled tasks.
+    }
+
+
+Both the RPC and Pub/Sub interfaces respond to cancellation requests with the
+following message (see :ref:`Failure Reasons <Actuator-Failure-Reasons>`
+for an explanation of possible errors):
+
+.. code-block:: python
+
+    {
+        'result': <'SUCCESS', 'FAILURE'>,
+        'info': <Failure reason, if any>,
+        'data': {}
+    }
+
+The Pub/Sub interface will respond to requests on the ``devices/actuators/schedule/result`` topic
+with the following header:
+
+.. code-block:: python
+
+    {
+        "type": "CANCEL_SCHEDULE"
+        "requesterID": <VIP Identity of requesting agent>,
+        "taskID": <Task ID of the request>
+    }
+
+
+.. admonition:: Points on Cancelling Scheduled Tasks
+
+    *  The task ID must match the task ID from the original request.
+    *  Attempting to cancel a Task which has already expired will result in a ``TASK_ID_DOES_NOT_EXIST`` error.
+
+
+---------------------
+
+.. _Actuator-Value-Request:
+
+Actuator Agent Value Requests
+=============================
+
+Once an Task has been scheduled and the time slot for one or more of the devices has started,
+an agent may interact with the device using the **get**, **set**, and **revert** methods. These
+may also be used without a prior reservation if no other agent has scheduled the device
+and ``allow_no_lock_write`` is True (the default) in the :ref:`agent configuration <Actuator-Config>`.
+
+Both **get** and **set** methods are responded to in the same manner. See :ref:`Actuator Reply <Actuator-Reply>` below.
+
+Getting values
+--------------
+
+While a device driver for a device will periodically poll and publish
+the state of a device you may want an up to the moment value for a
+point on a device. This can be accomplished using one of several interfaces:
+
+* The ``get_point`` & ``get_multiple_points`` RPC methods.
+* Publishing to the ``devices/actuators/get/<full device path>/<actuation point>`` Pub/Sub topic.
+
+The Pub/Sub interface and the ``get_point`` method each return the value
+of a single point, while the ``get_multiple_points`` RPC method can,
+as its name suggests, return more than point, potentially from multiple devices.
+
+The ``get_point`` RPC method takes two parameters:
+
+:topic: The topic of the device, optionally with the point included.
+:point: (optional) The point name, if it was not included in the topic.
+
+.. note::
+
+    The separate specification of the point name is intended to align
+    better with the equivalent method on the platform driver, for which
+    the point name must always be separate. Following this syntax allows
+    agents to optionally work with either the Actuator Agent or directly
+    with the Platform Driver.
+
+The ``get_multiple_points`` RPC method takes a single argument:
+
+:topics: Either a list of topics, including point name
+ or a list of [topic, point_name] pairs.
+
+The return of ``get_multiple_points`` consists of two dictionaries:
+
+* A dictionary mapping topics (with the point name) to values.
+* A dictionary mapping topics (with the point name) to errors.
+
+.. warning::
+
+    As this method does not require that all points return successfully,
+    callers should always remember to check the error dictionary.
+
+The Pub/Sub interface does not require a request body nor headers,
+since the information regarding device and point are embedded in the topic.
+
+When successful, the ActuatorAgent will respond on the ``devices/actuators/value/<full device path>/<actuation point>``
+topic with the message containing the value encoded in JSON. The header will contain:
+
+.. code-block:: python
+
+    {
+        'requesterID': <Agent VIP identity>
+    }
+
+If there is an error the PUB/SUB interface will publish to the
+``devices/actuators/error/<full device path>/<actuation point>`` topic
+with the message:
+
+.. code-block:: python
+
+    {
+        'type': <Class name of the exception raised by the request>
+        'value': <Specific info about the error>
+    }
+
+
+The header will be:
+
+.. code-block:: python
+
+    {
+        'requesterID': <VIP Identity of requesting agent>
+    }
+
+
+Setting Values
+--------------
+
+The value of points may be set using one of several interfaces:
+
+* The ``set_point`` & ``set_multiple_points`` RPC methods.
+* Publishing to the ``devices/actuators/set/<full device path>/<actuation point>`` topic.
+
+These interfaces all pass the request to the the Platform Driver, but only after
+performing access control based on the Task schedules and priorities described above.
+The Pub/Sub interface and the ``set_point`` method each return the value
+of a single point, while the ``set_multiple_points`` RPC method can,
+as its name suggests, return more than point, potentially from multiple devices.
+
+Setting a single point by RPC
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``set_point`` RPC method takes three or more parameters:
+
+:requester_id: The VIP identity of the caller. (The actual value is now ignored.)
+:topic: The topic of the device, optionally with the point included.
+:value: Value to which to set the point.
+:point: Point on the device. Uses old behavior if omitted.
+:\*\*kwargs: Any driver specific parameters
+
+The return value will be that to which the point was actually set.
+Usually invalid values cause an error but some drivers (e.g., Modbus)
+will instead return a different value than that which was provided for
+setting. An exception will be raised if there is an error setting the point.
+
+Setting multiple points
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``set_multiple_points`` RPC method can be used to set multiple points
+on multiple devices. It makes a single RPC call to the platform driver
+for each device. This method takes two or more parameters:
+
+:requester_id: The VIP identity of the caller (The actual value is now ignored.)
+:topics_values: A list of (topic, value) tuples.
+:\*\*kwargs: Any driver specific parameters.
+
+The return value will be a dictionary mapping points to exceptions raised.
+f all points were set successfully an empty dictionary will be returned.
+
+Setting a single point via Pub/Sub
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+When using the Pub/Sub interface, the message body should contain only the value
+to which the point is being set. Headers are not required.
+
+When successful, the ActuatorAgent will respond on the ``devices/actuators/value/<full device path>/<actuation point>``
+topic with the message containing the value encoded in JSON. The header will contain:
+
+.. code-block:: python
+
+    {
+        'requesterID': <Agent VIP identity>
+    }
+
+If there is an error the PUB/SUB interface will publish to the
+``devices/actuators/error/<full device path>/<actuation point>`` topic
+with the message:
+
+.. code-block:: python
+
+    {
+        'type': <Class name of the exception raised by the request>
+        'value': <Specific info about the error>
+    }
+
+
+The header will be:
+
+.. code-block:: python
+
+    {
+        'requesterID': <VIP Identity of requesting agent>
+    }
+
+
+Common Error Types
+^^^^^^^^^^^^^^^^^^
+
+    ``LockError``
+        Raised when a request is made without permission to
+        use a device. (Common causes may include attempting to access a device
+        for which another agent owns a scheduled Task, this agent's Task having
+        been preempted by another with higher priority, having run out of time
+        in the scheduled time slot, etc...)
+    ``ValueError``
+        Message missing (Pub/Sub only) or has the wrong data type.
+
+Most other error types involve problems with communication between the
+VOLTTRON device drivers and the device itself.
+
+Reverting Values and Devices to a Default State
+-----------------------------------------------
+
+The value of previously set devices may be reverted to default or prior values.
+The exact mechanism used to accomplish this is driver specific. Points may be reverted
+using one of four interfaces:
+
+* Single points may be reverted using the ``revert_point`` RPC method or publishing to the
+  ``actuators/revert/point/<device path>/<actuation point>`` topic.
+* All points on entire devices may be reverted by using the ``revert_device`` RPC method or
+  publishing to the ``devices/actuators/revert/device/<device path>`` topic.
+
+For all interfaces, if a different agent has a current, scheduled Task for the device a LockError will be raised.
+
+Reverting Single Points
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``revert_point`` RPC method reverts the value of a specific point on a device to a default state.
+This method requires two or more parameters:
+
+:requester_id: The VIP identity (this value is now ignored).
+:topic: The topic of the point to revert in the format, optionally with the point name included.
+:point: The point name, if it was not specified in the topic (aligns with the Platform Driver interface).
+:\*\*kwargs: Any driver specific parameters.
+
+Alternately, the agent may publish to the ``actuators/revert/point/<device path>/<actuation point>`` topic
+with the following header:
+
+.. code-block:: python
+
+        {
+            'requesterID': <Ignored, VIP Identity used internally>
+        }
+
+The ActuatorAgent will reply on ``devices/actuators/reverted/point/<full device path>/<actuation point>``
+to indicate that the point was reverted. Errors will be published on
+``devices/actuators/error/<full device path>/<actuation point>``
+
+Reverting Entire Devices
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``revert_device`` RPC method reverts all the writable values on a device to a default state.
+This method takes at least two parameters:
+
+:requester_id: The VIP Identity of the calling agent (this value is now ignored).
+:topic: The topic of the device to revert.
+:\*\*kwargs: Any driver specific parameters.
+
+Alternately, the agent may publish to the ``devices/actuators/revert/device/<device path>`` with the fallowing header:
+
+.. code-block:: python
+
+    {
+        'requesterID': <Ignored, VIP Identity used internally>
+    }
+
+The ActuatorAgent will then reply on the ``devices/actuators/reverted/device/<full device path>`` topic
+to indicate that the device was reverted.
+
+Errors will be published on the ``devices/actuators/error/<full device path>/<actuation point>``
+topic with the same header as the request.
+
+----------------------
+
+Actuator Feedback Communication
+===============================
+The Actuator Agent provides several forms of feedback to allow agents to monitor the state of their scheduled Tasks.
+This includes notices of preemeption, periodic publishes of state, and meaningful failure codes when requests are not
+successful.
+
+Preemption Publishes
+--------------------
+Both ``LOW`` and ``LOW_PREEMPT`` priority Tasks can be preempted:
+
+* A ``LOW`` priority Task may be preempted by a conflicting ``HIGH`` priority Task *before* it starts.
+* A ``LOW_PREEMPT`` priority Task can be preempted a conflicting ``HIGH`` priority Task even *after* it starts.
+
+If a Task is preempted it will publish the following message to the
+``devices/actuators/schedule/result`` topic:
+
+.. code-block:: python
+
+    {
+        'result': 'PREEMPTED',
+        'info': None,
+        'data': {
+                    'agentID': <Agent ID of preempting task>,
+                    'taskID': <Task ID of preempting task>
+                }
+    }
+
+Along with the following header:
+
+.. code-block:: python
+
+    {
+        'type': 'CANCEL_SCHEDULE',
+        'requesterID': <VIP ID of the agent which owns the preempted Task>,
+        'taskID': <Task ID of the preempted Task>
+    }
+
+
+.. admonition:: Preempt Grace Time
+
+    Remember that if your "LOW_PREEMPT" Task has already started and
+    is preempted you have a grace period to do any clean up before
+    losing access to the device. The length of this grace period is set
+    by ``preempt_grace_time`` in the :ref:`agent configuration <Actuator-Config>`.
+
+.. _Actuator-Schedule-State:
+
+Schedule State Publishes
+------------------------
+
+Periodically the ActuatorAgent will publish the state of all currently
+reserved devices. The first publish for a device will happen exactly
+when the reserved block of time for a device starts.
+
+For each device the ActuatorAgent will publish to an uniquely associated topic:
+
+    ``devices/actuators/schedule/announce/<full device path>``
+
+With the following header:
+
+.. code-block:: python
+
+    {
+        'requesterID': <VIP identity of Agent which has access>,
+        'taskID': <Task which owns this time slot>
+        'window': <Remaining seconds of the time slot>
+    }
+
+The frequency of the updates is configurable with the
+``schedule_publish_interval`` setting in the :ref:`agent configuration <Actuator-Config>`.
+
+
+.. _Actuator-Failure-Reasons:
+
+Failure Reasons
+---------------
+
+In many cases the Actuator Agent will try to give good feedback as to why
+a request failed. Note that some apply only to the Pub/Sub interface.
+
++--------------------------+-----------------------------------------------------------+
+|                              General Failures                                        |
++--------------------------+-----------------------------------------------------------+
+|   Failure Code           |  Description                                              |
++==========================+===========================================================+
+| **INVALID_REQUEST_TYPE** | Request type was not `NEW_SCHEDULE` or `CANCEL_SCHEDULE`. |
++--------------------------+-----------------------------------------------------------+
+| **MISSING_TASK_ID**      | Failed to supply a task ID.                                |
++--------------------------+-----------------------------------------------------------+
+| **MISSING_AGENT_ID**     | Agent ID not supplied.                                     |
++--------------------------+-----------------------------------------------------------+
+
++----------------------------------+---------------------------------------------------+
+|Task Scheduling Failures                                                                |
++----------------------------------+---------------------------------------------------+
+| Failure Code                     | Description                                       |
++==================================+===================================================+
+|TASK_ID_ALREADY_EXISTS            | The supplied task ID already belongs to an existing|
+|                                  | task.                                             |
++----------------------------------+---------------------------------------------------+
+|MISSING_PRIORITY                  | Failed to supply a priority for a Task schedule   |
+|                                  | request.                                          |
++----------------------------------+---------------------------------------------------+
+|INVALID_PRIORITY                  | Priority not one of `HIGH`, `LOW`, or             |
+|                                  | `LOW_PREEMPT`.                                    |
++----------------------------------+---------------------------------------------------+
+|MALFORMED_REQUEST_EMPTY           | Request list is missing or empty.                 |
++----------------------------------+---------------------------------------------------+
+|REQUEST_CONFLICTS_WITH_SELF       | Requested time slots on the same device overlap.  |
++----------------------------------+---------------------------------------------------+
+|MALFORMED_REQUEST                 | Reported when the request parser raises an        |
+|                                  |                                                   |
+|                                  | unhandled exception. The exception name and info  |
+|                                  |                                                   |
+|                                  | are appended to this info string.                 |
++----------------------------------+---------------------------------------------------+
+|CONFLICTS_WITH_EXISTING_SCHEDULES | This schedule conflicts with existing schedule(s) |
+|                                  |                                                   |
+|                                  | that it cannot preempt. The data item for the     |
+|                                  |                                                   |
+|                                  | results will contain info about the conflicts in  |
+|                                  |                                                   |
+|                                  | this form:                                        |
+|                                  |                                                   |
+|                                  | .. code-block:: python                            |
+|                                  |                                                   |
+|                                  |      {                                            |
+|                                  |          "<agentID1>":                            |
+|                                  |          {                                        |
+|                                  |              "<taskID1>":                         |
+|                                  |              [                                    |
+|                                  |                  ["campus/building/device1",      |
+|                                  |                   "2013-12-06 16:00:00-00:00",    |
+|                                  |                   "2013-12-06 16:20:00-00:00"],   |
+|                                  |                  ["campus/building/device1",      |
+|                                  |                   "2013-12-06 18:00:00-00:00",    |
+|                                  |                   "2013-12-06 18:20:00-00:00"]    |
+|                                  |              ]                                    |
+|                                  |              "<taskID2>":[...]                    |
+|                                  |          }                                        |
+|                                  |          "<agentID2>": {...}                      |
+|                                  |      }                                            |
+|                                  |                                                   |
++----------------------------------+---------------------------------------------------+
+
++-------------------------------+------------------------------------------------------+
+| Task Cancellation Failures                                                                 |
++-------------------------------+------------------------------------------------------+
+| Failure Code                  | Description                                          |
++===============================+======================================================+
+| **TASK_ID_DOES_NOT_EXIST**    | Trying to cancel a Task which does not exist. This   |
+|                               |                                                      |
+|                               | error can also occur when trying to cancel an already|
+|                               |                                                      |
+|                               | finished Task.                                       |
++-------------------------------+------------------------------------------------------+
+| **AGENT_ID_TASK_ID_MISMATCH** | A different agent ID is being used when trying to    |
+|                               |                                                      |
+|                               | cancel a Task.                                       |
++-------------------------------+------------------------------------------------------+
 
 
 .. _Actuator-Notes:
 
 Notes on Working With the ActuatorAgent
----------------------------------------
+=======================================
 
 -  An agent can watch the window value from :ref:`device state updates <Actuator-Schedule-State>` to perform scheduled
    actions within a timeslot
