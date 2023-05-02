@@ -280,7 +280,6 @@ an agent may interact with the device using the **get**, **set**, and **revert**
 may also be used without a prior reservation if no other agent has scheduled the device
 and ``allow_no_lock_write`` is True (the default) in the :ref:`agent configuration <Actuator-Config>`.
 
-Both **get** and **set** methods are responded to in the same manner. See :ref:`Actuator Reply <Actuator-Reply>` below.
 
 Getting values
 --------------
@@ -292,7 +291,7 @@ point on a device. This can be accomplished using one of several interfaces:
 * The ``get_point`` & ``get_multiple_points`` RPC methods.
 * Publishing to the ``devices/actuators/get/<full device path>/<actuation point>`` Pub/Sub topic.
 
-The Pub/Sub interface and the ``get_point`` method each return the value
+The Pub/Sub interface and the ``get_point`` RPC method each return the value
 of a single point, while the ``get_multiple_points`` RPC method can,
 as its name suggests, return more than point, potentially from multiple devices.
 
@@ -602,18 +601,18 @@ a request failed. Note that some apply only to the Pub/Sub interface.
 +==========================+===========================================================+
 | **INVALID_REQUEST_TYPE** | Request type was not `NEW_SCHEDULE` or `CANCEL_SCHEDULE`. |
 +--------------------------+-----------------------------------------------------------+
-| **MISSING_TASK_ID**      | Failed to supply a task ID.                                |
+| **MISSING_TASK_ID**      | Failed to supply a task ID.                               |
 +--------------------------+-----------------------------------------------------------+
-| **MISSING_AGENT_ID**     | Agent ID not supplied.                                     |
+| **MISSING_AGENT_ID**     | Agent ID not supplied.                                    |
 +--------------------------+-----------------------------------------------------------+
 
 +----------------------------------+---------------------------------------------------+
-|Task Scheduling Failures                                                                |
+|Task Scheduling Failures                                                              |
 +----------------------------------+---------------------------------------------------+
 | Failure Code                     | Description                                       |
 +==================================+===================================================+
-|TASK_ID_ALREADY_EXISTS            | The supplied task ID already belongs to an existing|
-|                                  | task.                                             |
+|TASK_ID_ALREADY_EXISTS            | The supplied task ID already belongs to an        |
+|                                  | existing task.                                    |
 +----------------------------------+---------------------------------------------------+
 |MISSING_PRIORITY                  | Failed to supply a priority for a Task schedule   |
 |                                  | request.                                          |
@@ -661,7 +660,7 @@ a request failed. Note that some apply only to the Pub/Sub interface.
 +----------------------------------+---------------------------------------------------+
 
 +-------------------------------+------------------------------------------------------+
-| Task Cancellation Failures                                                                 |
+| Task Cancellation Failures                                                           |
 +-------------------------------+------------------------------------------------------+
 | Failure Code                  | Description                                          |
 +===============================+======================================================+
