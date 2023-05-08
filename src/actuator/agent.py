@@ -519,9 +519,9 @@ class ActuatorAgent(Agent):
     The Actuator Agent also sends out the signal to drivers to trigger
     a device heartbeat.
 
-    :param heartbeat_interval: Interval in seonds to send out a heartbeat
+    :param heartbeat_interval: Interval in seconds to send out a heartbeat
         to devices.
-    :param schedule_publish_interval: Interval in seonds to publish the
+    :param schedule_publish_interval: Interval in seconds to publish the
         currently active schedules.
     :param schedule_state_file: Name of the file to save the current schedule
         state to. This file is updated every time a schedule changes.
