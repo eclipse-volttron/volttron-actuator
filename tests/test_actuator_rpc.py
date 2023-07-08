@@ -145,6 +145,7 @@ def publish_agent(request, volttron_instance):
     # using the configs created above
     driver_uuid = volttron_instance.install_agent(
         agent_dir='volttron-platform-driver',
+        vip_identity=PLATFORM_DRIVER,
         config_file={},
         start=True)
     print("agent id: ", driver_uuid)
@@ -243,7 +244,6 @@ def revert_devices(request, publish_agent):
     ('', FAILURE, 'MALFORMED_REQUEST: TypeError: taskid must be a nonempty string'),
     (None, FAILURE, 'MISSING_TASK_ID')
 ])
-@pytest.mark.actuator
 def test_request_new_schedule(publish_agent, cancel_schedules, taskid, expected_result, expected_info):
     """
     Test responses for successful schedule request
@@ -281,7 +281,6 @@ def test_request_new_schedule(publish_agent, cancel_schedules, taskid, expected_
     ('LOW2', 'INVALID_PRIORITY'),
     (None, 'MISSING_PRIORITY')
 ])
-@pytest.mark.actuator
 def test_request_new_schedule_should_return_failure_on_bad_priority(publish_agent, invalid_priority, expected_info):
     """
     Test error responses for schedule request with an invalid priority
@@ -310,7 +309,6 @@ def test_request_new_schedule_should_return_failure_on_bad_priority(publish_agen
     assert result['info'] == expected_info
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_return_failure_on_empty_message(publish_agent):
     """
     Test error responses for schedule request with an empty message
@@ -334,7 +332,6 @@ def test_request_new_schedule_should_return_failure_on_empty_message(publish_age
     assert result['info'] == 'MALFORMED_REQUEST_EMPTY'
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_return_failure_on_duplicate_taskid(publish_agent, cancel_schedules):
     """
     Test error responses for schedule request with task id that is already
@@ -379,7 +376,6 @@ def test_request_new_schedule_should_return_failure_on_duplicate_taskid(publish_
     assert result['info'] == 'TASK_ID_ALREADY_EXISTS'
 
 
-@pytest.mark.actuator
 def test_reques_new_schedule_error_malformed_request(publish_agent):
     """
     Test error responses for schedule request with malformed request -
@@ -408,7 +404,6 @@ def test_reques_new_schedule_error_malformed_request(publish_agent):
     assert result['info'].startswith('MALFORMED_REQUEST')
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_succeed_on_preempt_self(publish_agent, cancel_schedules):
     """
     Test error response for schedule request through pubsub.
@@ -485,7 +480,6 @@ def test_request_new_schedule_should_succeed_on_preempt_self(publish_agent, canc
     assert cancel_message['result'] == 'PREEMPTED'
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_suceed_on_preempt_active_task(publish_agent, cancel_schedules):
     """
     Test error response for schedule request.
@@ -562,7 +556,6 @@ def test_request_new_schedule_should_suceed_on_preempt_active_task(publish_agent
     assert cancel_message['result'] == 'PREEMPTED'
 
 
-@pytest.mark.actuator
 @pytest.mark.xfail(reason="Request ids are now ignored.")
 # This test checks to see if a requestid is no longer valid.
 # Since request ids are always vip identities and only one agent
@@ -680,7 +673,6 @@ def test_request_new_schedule_preempt_active_task_gracetime(publish_agent, cance
             agentid)
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_return_failure_on_preempt_active_task(publish_agent, cancel_schedules):
     """
     Test error response for schedule request.
@@ -738,7 +730,6 @@ def test_request_new_schedule_should_return_failure_on_preempt_active_task(publi
     assert list(result['data'][TEST_AGENT].keys())[0] == taskid
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_succeed_on_preempt_future_task(publish_agent, cancel_schedules):
     """
     Test error response for schedule request.
@@ -817,7 +808,6 @@ def test_request_new_schedule_should_succeed_on_preempt_future_task(publish_agen
     assert cancel_message['result'] == 'PREEMPTED'
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_return_failure_on_conflicting_time_slots(publish_agent):
     """
     Test error response for schedule request. Test schedule with conflicting
@@ -849,7 +839,6 @@ def test_request_new_schedule_should_return_failure_on_conflicting_time_slots(pu
     assert result['info'] == 'REQUEST_CONFLICTS_WITH_SELF'
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_return_failure_on_conflicting_schedules(publish_agent, cancel_schedules):
     """
     Test schedule conflict with existing schedule
@@ -893,7 +882,6 @@ def test_request_new_schedule_should_return_failure_on_conflicting_schedules(pub
     assert result['info'] == 'CONFLICTS_WITH_EXISTING_SCHEDULES'
 
 
-@pytest.mark.actuator
 def test_request_new_schedule_should_succeed_on_overlap_time_slots(publish_agent, cancel_schedules):
     """
     Test schedule where stop time of one requested time slot is the same as
@@ -931,7 +919,6 @@ def test_request_new_schedule_should_succeed_on_overlap_time_slots(publish_agent
     assert result['result'] == SUCCESS
 
 
-@pytest.mark.actuator
 def test_request_cancel_schedule_should_succeed(publish_agent):
     """
     Test successful schedule cancel
@@ -968,7 +955,6 @@ def test_request_cancel_schedule_should_succeed(publish_agent):
     assert result['result'] == SUCCESS
 
 
-@pytest.mark.actuator
 def test_request_cancel_schedule_should_return_failure_on_invalid_taskid(publish_agent):
     """
     Test error responses for schedule request. Test invalid task id
@@ -992,7 +978,6 @@ def test_request_cancel_schedule_should_return_failure_on_invalid_taskid(publish
 
 # We need to test the getters first before proceeding to testing the other actuator methods because
 # some methods mutate driver points AND all tests share the same publish_agent setup
-@pytest.mark.actuator
 def test_get_point_should_succeed(publish_agent):
     """
     Test get default value of a point
@@ -1017,7 +1002,6 @@ def test_get_point_should_succeed(publish_agent):
     ([['fakedriver0', 'SampleWritableFloat1'],
       ['fakedriver1', 'SampleWritableFloat1']])
 ])
-@pytest.mark.actuator
 def test_get_multiple_points_should_succeed(publish_agent, cancel_schedules, topics):
     results, errors = publish_agent.vip.rpc.call(
         'platform.actuator',
@@ -1028,7 +1012,6 @@ def test_get_multiple_points_should_succeed(publish_agent, cancel_schedules, top
     assert errors == {}
 
 
-@pytest.mark.actuator
 def test_set_point_then_get_point_should_succeed(publish_agent, cancel_schedules):
     """
     Test getting a float value of a point through RPC
@@ -1080,7 +1063,6 @@ def test_set_point_then_get_point_should_succeed(publish_agent, cancel_schedules
     assert result == 1.0
 
 
-@pytest.mark.actuator
 def test_get_point_raises_remote_error_on_invalid_point(publish_agent):
     """
     Test getting a float value of a point through RPC with invalid point
@@ -1099,7 +1081,6 @@ def test_get_point_raises_remote_error_on_invalid_point(publish_agent):
             'Point not configured on device: SampleWritableFloat123') != -1
 
 
-@pytest.mark.actuator
 def test_revert_point_should_succeed(publish_agent, cancel_schedules):
     """
     Test reverting a float value of a point through rpc using only the topic parameter
@@ -1163,7 +1144,6 @@ def test_revert_point_should_succeed(publish_agent, cancel_schedules):
     assert result == approx(initial_value)
 
 
-@pytest.mark.actuator
 def test_revert_point_with_point_should_succeed(publish_agent, cancel_schedules):
     """
     Test reverting a float value of a point through rpc using both topic and point parameters
@@ -1227,7 +1207,6 @@ def test_revert_point_with_point_should_succeed(publish_agent, cancel_schedules)
     assert result == approx(initial_value)
 
 
-@pytest.mark.actuator
 def test_revert_device_should_succeed(publish_agent, cancel_schedules):
     """
     Tests whether a point is set to its initial value upon calling revert_device.
@@ -1292,7 +1271,6 @@ def test_revert_device_should_succeed(publish_agent, cancel_schedules):
     assert result == approx(initial_value)
 
 
-@pytest.mark.actuator
 def test_set_point_should_succeed(publish_agent, cancel_schedules, revert_devices):
     """
     Test setting a float value of a point through rpc
@@ -1336,7 +1314,6 @@ def test_set_point_should_succeed(publish_agent, cancel_schedules, revert_device
     assert result == 2.5
 
 
-@pytest.mark.actuator
 def test_set_point_raises_type_error_on_setting_array(publish_agent, cancel_schedules):
     """
     Test setting a array of single float value of a point. Should return
@@ -1381,7 +1358,6 @@ def test_set_point_raises_type_error_on_setting_array(publish_agent, cancel_sche
         assert "TypeError" in e.message
 
 
-@pytest.mark.actuator
 def test_set_point_raises_lock_error(publish_agent):
     """
     Test setting a float value of a point through rpc without an allocation
@@ -1408,7 +1384,6 @@ def test_set_point_raises_lock_error(publish_agent):
             TEST_AGENT)
 
 
-@pytest.mark.actuator
 def test_set_point_raises_value_error(publish_agent, cancel_schedules):
     """
     Test setting a wrong type value of a point through rpc
@@ -1451,7 +1426,6 @@ def test_set_point_raises_value_error(publish_agent, cancel_schedules):
         assert "ValueError" in e.message
 
 
-@pytest.mark.actuator
 def test_set_point_raises_remote_error_on_read_only_point(publish_agent, cancel_schedules):
     agentid = TEST_AGENT
     taskid = 'task_set_readonly_point'
@@ -1485,7 +1459,6 @@ def test_set_point_raises_remote_error_on_read_only_point(publish_agent, cancel_
         pytest.fail("Expecting remote error.")
 
 
-@pytest.mark.actuator
 def test_set_point_should_succeed_on_allow_no_lock_write_default_setting(publish_agent, volttron_instance):
     """ Tests the default setting, 'allow_no_lock_write=True', to allow writing without a
     lock as long as nothing else has the device locked.
@@ -1526,7 +1499,6 @@ def test_set_point_should_succeed_on_allow_no_lock_write_default_setting(publish
         volttron_instance.remove_agent(my_actuator_uuid)
 
 
-@pytest.mark.actuator
 def test_set_point_raises_remote_error_on_allow_no_lock_write_default_setting(publish_agent, volttron_instance):
     """ Tests the default setting, 'allow_no_lock_write=True', to allow writing without a
     lock as long as nothing else has the device locked. In this case, we schedule the devices, thereby
@@ -1589,7 +1561,6 @@ def test_set_point_raises_remote_error_on_allow_no_lock_write_default_setting(pu
         volttron_instance.remove_agent(my_actuator_uuid)
 
 
-@pytest.mark.actuator
 def test_set_point_raises_remote_error_on_lock_failure(publish_agent, cancel_schedules):
     """
     Test setting a float value of a point through rpc
@@ -1613,7 +1584,6 @@ def test_set_point_raises_remote_error_on_lock_failure(publish_agent, cancel_sch
         pytest.fail("Expecting remote error.")
 
 
-@pytest.mark.actuator
 def test_get_multiple_points_captures_errors_on_nonexistent_point(publish_agent, cancel_schedules):
     results, errors = publish_agent.vip.rpc.call(
         'platform.actuator',
@@ -1629,7 +1599,6 @@ def test_get_multiple_points_captures_errors_on_nonexistent_point(publish_agent,
         ([42], '42'),
         ([None], 'None'),
 ])
-@pytest.mark.actuator
 def test_get_multiple_points_captures_errors_on_invalid_topic(publish_agent, cancel_schedules, invalid_topics, topic_key):
     results, errors = publish_agent.vip.rpc.call('platform.actuator', 'get_multiple_points', invalid_topics).get(timeout=10)
     assert results == {}
@@ -1648,7 +1617,6 @@ def test_get_multiple_points_captures_errors_on_invalid_topic(publish_agent, can
                  (('fakedriver1', 'SampleWritableFloat1'), 42)]
         )
     ])
-@pytest.mark.actuator
 def test_set_multiple_points_should_succeed(publish_agent, cancel_schedules, topics_values_list):
     agentid = TEST_AGENT
     taskid0 = 'task_point_on_device_0'
@@ -1692,7 +1660,6 @@ def test_set_multiple_points_should_succeed(publish_agent, cancel_schedules, top
     assert result == {}
 
 
-@pytest.mark.actuator
 def test_set_multiple_points_raises_remote_error_on_no_lock(publish_agent, cancel_schedules):
     agentid = TEST_AGENT
     with pytest.raises(RemoteError):
@@ -1704,7 +1671,6 @@ def test_set_multiple_points_raises_remote_error_on_no_lock(publish_agent, cance
         pytest.fail("Expecting remote error.")
 
 
-@pytest.mark.actuator
 def test_set_multiple_points_captures_errors_on_read_only_point(publish_agent, cancel_schedules):
     agentid = TEST_AGENT
     taskid = 'task_point_on_device_0'
@@ -1744,7 +1710,6 @@ def test_set_multiple_points_captures_errors_on_read_only_point(publish_agent, c
         (42, '42'),
         (None, 'None'),
 ])
-@pytest.mark.actuator
 def test_set_multiple_points_captures_errors_on_invalid_topic(publish_agent, cancel_schedules, invalid_topics, topic_key):
     agentid = TEST_AGENT
     taskid = 'task_point_on_device_0'
@@ -1773,7 +1738,6 @@ def test_set_multiple_points_captures_errors_on_invalid_topic(publish_agent, can
     assert result[topic_key] == f"ValueError('Invalid topic: {topic_key}')"
 
 
-@pytest.mark.actuator
 def test_scrape_all_should_succeed(publish_agent, cancel_schedules, volttron_instance):
     expected_count_points = sum(1 for _ in FAKE_UNIT_TESTING_CSV.split('\n') if _) - 1
     result = publish_agent.vip.rpc.call('platform.actuator', 'scrape_all', 'fakedriver0').get(timeout=10)
@@ -1782,7 +1746,6 @@ def test_scrape_all_should_succeed(publish_agent, cancel_schedules, volttron_ins
     assert len(result) == expected_count_points
 
 
-@pytest.mark.actuator
 def test_actuator_default_config_should_succeed(volttron_instance, publish_agent):
     """
     Test the default configuration file included with the agent

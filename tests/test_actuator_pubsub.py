@@ -129,7 +129,7 @@ def revert_devices(request, publish_agent):
 
 
 # VOLTTRON 2.0 agents will deprecated from VOLTTRON 6.0 release. So running it for only volttron 3.0 agents
-@pytest.fixture(scope="module", params=['volttron_3'])
+@pytest.fixture(scope="module")
 def publish_agent(request, volttron_instance):
     """
     Fixture used for setting up the environment.
@@ -211,6 +211,7 @@ Heartbeat,Heartbeat,On / Off,on/off,TRUE,TRUE,boolean,Heart beat point
     # using the configs created above
     driver_uuid = volttron_instance.install_agent(
         agent_dir='volttron-platform-driver',
+        vip_identity=PLATFORM_DRIVER,
         config_file={},
         start=True)
     print("agent id: ", driver_uuid)
@@ -267,7 +268,6 @@ def publish(publish_agent, topic, header, message):
     publish_agent.vip.pubsub.publish('pubsub', topic, headers=header, message=message).get(timeout=10)
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_response(publish_agent):
     """
     Test requesting a new schedule and canceling a schedule through pubsub
@@ -339,7 +339,6 @@ def test_schedule_response(publish_agent):
     assert result_header['type'] == 'CANCEL_SCHEDULE'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_announce(publish_agent, volttron_instance):
     """
     Tests the schedule announcements of actuator.
@@ -413,7 +412,6 @@ def test_schedule_announce(publish_agent, volttron_instance):
         volttron_instance.start_agent(actuator_uuid)
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_error_int_taskid(publish_agent):
     """ Test schedule request through pubsub with int task id
 
@@ -450,7 +448,6 @@ def test_schedule_error_int_taskid(publish_agent):
     assert result_message['info'] == 'MALFORMED_REQUEST: TypeError: taskid must be a nonempty string'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_empty_task(publish_agent, cancel_schedules):
     """
     Test responses for schedule request through pubsub. Test task=''
@@ -494,7 +491,6 @@ def test_schedule_empty_task(publish_agent, cancel_schedules):
     assert result_message['info'] == 'MALFORMED_REQUEST: TypeError: taskid must be a nonempty string'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_error_none_taskid(publish_agent):
     """
     Test error responses for schedule request through pubsub. Test taskID=None
@@ -531,7 +527,6 @@ def test_schedule_error_none_taskid(publish_agent):
     assert result_message['info'] == 'MISSING_TASK_ID'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_error_invalid_type(publish_agent):
     """
     Test error responses for schedule request through pubsub. Test invalid type in header
@@ -568,7 +563,6 @@ def test_schedule_error_invalid_type(publish_agent):
     assert result_message['info'] == 'INVALID_REQUEST_TYPE'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_error_invalid_priority(publish_agent):
     """
     Test error responses for schedule request through pubsub. Test invalid type in header
@@ -607,7 +601,6 @@ def test_schedule_error_invalid_priority(publish_agent):
     assert result_message['info'] == 'INVALID_PRIORITY'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_error_empty_message(publish_agent):
     """
     Test error responses for schedule request through pubsub. Test empty message
@@ -640,7 +633,6 @@ def test_schedule_error_empty_message(publish_agent):
     assert result_message['info'] == 'MALFORMED_REQUEST_EMPTY'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_error_multiple_missing_headers(publish_agent):
     """
     Test error responses for schedule request through pubsub. Test multiple missing headers
@@ -674,7 +666,6 @@ def test_schedule_error_multiple_missing_headers(publish_agent):
     assert result_message['info'] == 'MALFORMED_REQUEST_EMPTY' or result_message['info'] == 'MISSING_PRIORITY'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_error_missing_priority(publish_agent):
     """
     Test error response for schedule request through pubsub. Test missing priority info
@@ -711,7 +702,6 @@ def test_schedule_error_missing_priority(publish_agent):
     assert result_message['info'] == 'MISSING_PRIORITY'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_error_malformed_request(publish_agent):
     """
     Test error response for schedule request through pubsub.
@@ -750,7 +740,6 @@ def test_schedule_error_malformed_request(publish_agent):
     assert result_message['info'].startswith('MALFORMED_REQUEST')
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_preempt_self(publish_agent, cancel_schedules):
     """
     Test error response for schedule request through pubsub.
@@ -852,7 +841,6 @@ def test_schedule_preempt_self(publish_agent, cancel_schedules):
     assert cancel_message['result'] == 'PREEMPTED'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_preempt_other(publish_agent, cancel_schedules):
     """
     Test error response for schedule request through pubsub.
@@ -954,7 +942,6 @@ def test_schedule_preempt_other(publish_agent, cancel_schedules):
     assert cancel_message['result'] == 'PREEMPTED'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_conflict(publish_agent, cancel_schedules):
     """
     Test schedule conflict with existing schdeule
@@ -1009,7 +996,6 @@ def test_schedule_conflict(publish_agent, cancel_schedules):
     assert result_message['info'] == 'CONFLICTS_WITH_EXISTING_SCHEDULES'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_conflict_self(publish_agent):
     """
     Test schedule conflict within a single request
@@ -1048,7 +1034,6 @@ def test_schedule_conflict_self(publish_agent):
     assert result_message['info'] == 'REQUEST_CONFLICTS_WITH_SELF'
 
 
-@pytest.mark.actuator_pubsub
 def test_schedule_overlap(publish_agent, cancel_schedules):
     """
     Test successful schedule when end time of one time slot is the same as
@@ -1094,7 +1079,6 @@ def test_schedule_overlap(publish_agent, cancel_schedules):
     assert result_message['result'] == SUCCESS
 
 
-@pytest.mark.actuator_pubsub
 def test_cancel_error_invalid_task(publish_agent):
     """
     Test error responses for schedule request through pubsub.
@@ -1131,7 +1115,6 @@ def test_cancel_error_invalid_task(publish_agent):
     assert result_header['type'] == 'CANCEL_SCHEDULE'
 
 
-@pytest.mark.actuator_pubsub
 def test_get_default(publish_agent):
     """
     Test getting the default value of a point through pubsub
@@ -1173,7 +1156,6 @@ def test_get_default(publish_agent):
     assert result_message == 10.0
 
 
-@pytest.mark.actuator_pubsub
 def test_get_value_success(publish_agent, cancel_schedules):
     """
     Test getting a float value of a point through pubsub
@@ -1245,7 +1227,6 @@ def test_get_value_success(publish_agent, cancel_schedules):
     assert result_message == 20.5
 
 
-@pytest.mark.actuator_pubsub
 def test_get_error_invalid_point(publish_agent):
     """
     Test getting a float value of a point through pubsub with invalid
@@ -1291,7 +1272,6 @@ def test_get_error_invalid_point(publish_agent):
     assert result_message['value'] == "['Point not configured on device: SampleWritableFloat12']"
 
 
-@pytest.mark.actuator_pubsub
 def test_set_value_bool(publish_agent, cancel_schedules, revert_devices):
     """
     Test setting a float value of a point through pubsub
@@ -1359,7 +1339,6 @@ def test_set_value_bool(publish_agent, cancel_schedules, revert_devices):
     assert result_message is True
 
 
-@pytest.mark.actuator_pubsub
 def test_set_value_array(publish_agent, cancel_schedules, revert_devices):
     """
     Test setting point through pubsub. Set value as array with length=1
@@ -1430,7 +1409,6 @@ def test_set_value_array(publish_agent, cancel_schedules, revert_devices):
     assert result_message['type'] == 'builtins.TypeError'
 
 
-@pytest.mark.actuator_pubsub
 def test_set_value_float(publish_agent, cancel_schedules, revert_devices):
     """
     Test setting a float value of a point  through pubsub.
@@ -1500,7 +1478,6 @@ def test_set_value_float(publish_agent, cancel_schedules, revert_devices):
     assert result_message == 0.2
 
 
-@pytest.mark.actuator_pubsub
 def test_revert_point(publish_agent, cancel_schedules):
     """
     Test setting a float value of a point  through pubsub.
@@ -1614,7 +1591,6 @@ def test_revert_point(publish_agent, cancel_schedules):
     assert result == initial_value
 
 
-@pytest.mark.actuator_pubsub
 def test_revert_device(publish_agent, cancel_schedules):
     """
     Test setting a float value of a point  through pubsub.
@@ -1718,7 +1694,6 @@ def test_revert_device(publish_agent, cancel_schedules):
     assert result == initial_value
 
 
-@pytest.mark.actuator_pubsub
 def test_set_read_only_point(publish_agent, cancel_schedules):
     """
     Test setting a value of a read only point through pubsub
@@ -1790,7 +1765,6 @@ def test_set_read_only_point(publish_agent, cancel_schedules):
     assert result_message['value'] == "['Trying to write to a point configured read only: OutsideAirTemperature1']"
 
 
-@pytest.mark.actuator_pubsub
 def test_set_lock_error(publish_agent):
     """
     Test setting a float value of a point through pubsub without an allocation
@@ -1856,7 +1830,6 @@ def test_set_lock_error(publish_agent):
     assert current_value == new_value
 
 
-@pytest.mark.actuator_pubsub
 def test_set_value_error(publish_agent, cancel_schedules):
     """
     Test setting a value of a point through pubsub

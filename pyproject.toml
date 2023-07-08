@@ -39,7 +39,7 @@ classifiers = [
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
 tzlocal = "^4.2"
-volttron = ">=10.0.rc0,<11.0"
+volttron = ">=10.0.4rc1,<11.0"
 types-tzlocal = "^4.2.2.2"
 
 [tool.poetry.group.dev.dependencies]
