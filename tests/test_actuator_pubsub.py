@@ -245,13 +245,19 @@ Heartbeat,Heartbeat,On / Off,on/off,TRUE,TRUE,boolean,Heart beat point
     # 4: add a tear down method to stop and remove agents
     def stop_agent():
         print("In teardown method of module")
-        volttron_instance.stop_agent(actuator_uuid)
-        volttron_instance.stop_agent(driver_uuid)
-        if not os.environ.get('DEBUG'):
-            volttron_instance.remove_agent(actuator_uuid)
-            volttron_instance.remove_agent(driver_uuid)
-        gevent.sleep(2)
         fake_publish_agent.core.stop()
+        try:
+            volttron_instance.stop_agent(actuator_uuid)
+            volttron_instance.stop_agent(driver_uuid)
+            if not os.environ.get('DEBUG'):
+                volttron_instance.remove_agent(actuator_uuid)
+                volttron_instance.remove_agent(driver_uuid)
+            gevent.sleep(2)
+        except BaseException as e:
+            # See https://github.com/eclipse-volttron/volttron-testing/issues/42
+            # this is a module level fixture, so we don't have to worry about error during cleanup.
+            # volttron instance cleanup shuts down all running agents before platform shutdown
+            print("Got exception while cleaning agents: {e}")
 
     request.addfinalizer(stop_agent)
     return fake_publish_agent
