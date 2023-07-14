@@ -449,6 +449,7 @@ from volttron.utils import (
 )
 from volttron.utils.jsonrpc import RemoteError
 from volttron.utils.time import parse_timestamp_string
+from volttron.client.messaging.health import STATUS_BAD
 
 from actuator import unpack_legacy_message
 from actuator.scheduler import ScheduleManager
@@ -558,7 +559,7 @@ class ActuatorAgent(Agent):
         #Only turn this on once we have confirmation from the config store.
         self.allow_no_lock_write = False
         self._update_event_time = None
-
+        self.driver_vip_identity = None
         self.default_config = {
             "heartbeat_interval": heartbeat_interval,
             "schedule_publish_interval": schedule_publish_interval,
@@ -585,8 +586,27 @@ class ActuatorAgent(Agent):
             allow_no_lock_write = bool(config["allow_no_lock_write"])
         except ValueError as e:
             _log.error("ERROR PROCESSING CONFIGURATION: {}".format(e))
-            #TODO: set a health status for the agent
+            self.vip.health.set_status(STATUS_BAD, "Error processing configuration: {e}")
             return
+
+        _log.debug(f"Configuring Actuator Agent. driver vip id is: {driver_vip_identity}")
+        if action == "NEW":
+            count = 0
+            # may be both driver and actuator was auto started with the same priority.
+            # retry for a minute
+            while not self._is_driver_running(driver_vip_identity) and count < 12:
+                count = count + 1
+                gevent.sleep(5)
+            if not self._is_driver_running(driver_vip_identity):
+                _log.error("Configuration of actuator agent failed. Start driver agent and restart actuator")
+                return
+        else:
+            if not self._is_driver_running(driver_vip_identity):
+                # if this is not the first time. i.e. this is a config store update, don't retry simply abort
+                # config change and return
+                _log.error(f"Configuration update of actuator agent failed. Configured driver agent with vip "
+                           f"identity, {driver_vip_identity}, is NOT running")
+                return
 
         self.driver_vip_identity = driver_vip_identity
         self.schedule_publish_interval = schedule_publish_interval
@@ -595,7 +615,7 @@ class ActuatorAgent(Agent):
         _log.debug("PlatformDriver VIP IDENTITY: {}".format(self.driver_vip_identity))
         _log.debug("Schedule publish interval: {}".format(self.schedule_publish_interval))
 
-        #Only restart the heartbeat if it changes.
+        # Only restart the heartbeat if it changes.
         if (self.heartbeat_interval != heartbeat_interval or action == "NEW"
                 or self.heartbeat_greenlet is None):
             if self.heartbeat_greenlet is not None:
@@ -618,7 +638,7 @@ class ActuatorAgent(Agent):
             self._schedule_manager.set_grace_period(preempt_grace_time)
 
         if not self.subscriptions_setup and self._schedule_manager is not None:
-            #Do this after the scheduler is setup.
+            # Do this after the scheduler is setup.
             self.vip.pubsub.subscribe(peer='pubsub',
                                       prefix=topics.ACTUATOR_GET(),
                                       callback=self.handle_get)
@@ -641,8 +661,27 @@ class ActuatorAgent(Agent):
 
             self.subscriptions_setup = True
 
+    def _is_driver_running(self, driver_vip_id):
+        # validate driver vip identity. driver agent should be running
+        peers = self.vip.peerlist().get(timeout=5)
+
+        if driver_vip_id in peers:
+            return True
+        else:
+            self.vip.health.set_status(STATUS_BAD, f"Platform driver agent with vip identity, {driver_vip_id}, "
+                                                   f"is NOT running")
+            _log.error(f"Platform driver agent with vip identity, {driver_vip_id}, is NOT running. "
+                       f"Please make sure a volttron platform driver agent is installed and running "
+                       f"(vctl install volttron-driver). Actuator by default looks for driver agent with vip id "
+                       f"'platform.driver. To point to a different vip id, configure it using driver_vip_identity "
+                       f"parameter in this agent's configuration")
+            # return as nothing much can be done till driver is up
+            return False
+
     def _heart_beat(self):
-        _log.debug("sending heartbeat")
+        if self.driver_vip_identity is None or not self._is_driver_running(self.driver_vip_identity):
+            _log.warning("Platform driver is not running")
+            return
         try:
             self.vip.rpc.call(self.driver_vip_identity, 'heart_beat').get(timeout=20.0)
         except Unreachable:
@@ -679,9 +718,9 @@ class ActuatorAgent(Agent):
         self._device_states = self._schedule_manager.get_schedule_state(now)
         _log.debug("device states is {}".format(self._device_states))
 
-        #device_only and publish tells us if we were called by a reservation change.
-        #If we are being called as part of a regularly scheduled publish
-        #we ignore our previous publish schedule time.
+        # device_only and publish tells us if we were called by a reservation change.
+        # If we are being called as part of a regularly scheduled publish
+        # we ignore our previous publish schedule time.
         if device_only is None and publish:
             self._update_event_time = None
 

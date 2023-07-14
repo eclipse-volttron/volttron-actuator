@@ -54,9 +54,10 @@ from gevent.subprocess import Popen
 from mock import MagicMock
 from pathlib import Path
 
-from volttron.client.known_identities import CONFIGURATION_STORE, PLATFORM_DRIVER
+from volttron.client.known_identities import CONFIGURATION_STORE, PLATFORM_DRIVER, PLATFORM_HEALTH
 from volttron.client.messaging import topics
 from volttron.utils.time import parse_timestamp_string
+from volttron.utils import execute_command
 
 FAILURE = 'FAILURE'
 SUCCESS = 'SUCCESS'
@@ -245,13 +246,19 @@ Heartbeat,Heartbeat,On / Off,on/off,TRUE,TRUE,boolean,Heart beat point
     # 4: add a tear down method to stop and remove agents
     def stop_agent():
         print("In teardown method of module")
-        volttron_instance.stop_agent(actuator_uuid)
-        volttron_instance.stop_agent(driver_uuid)
-        if not os.environ.get('DEBUG'):
-            volttron_instance.remove_agent(actuator_uuid)
-            volttron_instance.remove_agent(driver_uuid)
-        gevent.sleep(2)
         fake_publish_agent.core.stop()
+        try:
+            volttron_instance.stop_agent(actuator_uuid)
+            volttron_instance.stop_agent(driver_uuid)
+            if not os.environ.get('DEBUG'):
+                volttron_instance.remove_agent(actuator_uuid)
+                volttron_instance.remove_agent(driver_uuid)
+            gevent.sleep(2)
+        except BaseException as e:
+            # See https://github.com/eclipse-volttron/volttron-testing/issues/42
+            # this is a module level fixture, so we don't have to worry about error during cleanup.
+            # volttron instance cleanup shuts down all running agents before platform shutdown
+            print("Got exception while cleaning agents: {e}")
 
     request.addfinalizer(stop_agent)
     return fake_publish_agent
@@ -1896,3 +1903,76 @@ def test_set_value_error(publish_agent, cancel_schedules):
     result_message = publish_agent.callback.call_args[0][5]
     assert result_message['type'] == 'builtins.ValueError'
     assert result_message['value'] == '["could not convert string to float: \'abcd\'"]'
+
+
+def test_no_platform_wrapper_during_actuator_install(volttron_instance):
+    fake_agent = volttron_instance.build_agent(identity="test_publish_agent")
+    uuid = None
+    try:
+        config = {
+                    "schedule_publish_interval": 10,
+                    "schedule_state_file": "actuator_state.test",
+                    "allow_no_lock_write": False,
+                    "driver_vip_identity": "invalid_driver"
+                 }
+        uuid = volttron_instance.install_agent(agent_dir=f"{Path(__file__).parent.parent.resolve()}",
+                                               vip_identity="failing_actuator", config_file=config)
+
+        volttron_instance.start_agent(uuid)
+        health_dict = fake_agent.vip.rpc.call(PLATFORM_HEALTH, "get_platform_health").get(timeout=4)
+        assert health_dict
+        tested = False
+        for vip in health_dict:
+            if vip == "failing_actuator":
+                assert health_dict[vip]["message"] == "BAD"
+                tested = True
+        assert tested
+    finally:
+        fake_agent.core.stop()
+        if uuid:
+            volttron_instance.stop_agent(uuid)
+
+
+def test_invalid_driver_during_config_update(publish_agent, volttron_instance):
+    uuid = None
+    try:
+        config = {
+            "schedule_publish_interval": 2,
+            "schedule_state_file": "actuator_state.test",
+            "allow_no_lock_write": False,
+            "driver_vip_identity": "platform.driver"
+        }
+        uuid = volttron_instance.install_agent(agent_dir=f"{Path(__file__).parent.parent.resolve()}",
+                                               vip_identity="failing_actuator_2", config_file=config)
+        volttron_instance.start_agent(uuid)
+        gevent.sleep(1)
+
+        # check if health is good
+        health_dict = publish_agent.vip.rpc.call(PLATFORM_HEALTH, "get_platform_health").get(timeout=4)
+        assert health_dict
+        tested = False
+        for vip in health_dict:
+            if vip == "failing_actuator_2":
+                assert health_dict[vip]["message"] == "GOOD"
+                tested = True
+        assert tested
+
+        # Update config to use invalid driver vip id
+        cmd = ["vctl", 'config', 'store', 'failing_actuator_2', 'config',
+               f"{Path(__file__).parent.resolve()}/actuator3.config", "--json"]
+        res = execute_command(cmd, env=volttron_instance.env,
+                              err_prefix="Error updating actuator config")
+        gevent.sleep(2)
+        health_dict = publish_agent.vip.rpc.call(PLATFORM_HEALTH, "get_platform_health").get(timeout=4)
+        print(health_dict)
+        assert health_dict
+        tested = False
+        for vip in health_dict:
+            if vip == "failing_actuator_2":
+                assert health_dict[vip]["message"] == "BAD"
+                tested = True
+        assert tested
+    finally:
+        if uuid:
+            volttron_instance.stop_agent(uuid)
+
